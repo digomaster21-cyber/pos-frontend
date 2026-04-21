@@ -20,7 +20,7 @@ import {
   SafetyOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
-import { usersApi } from '../../services/users';
+import { usersApi, UserCreate, UserUpdate } from '../../services/users';
 import { rolesApi } from '../../services/roles';
 import { permissionsApi } from '../../services/permissions';
 import { branchesApi } from '../../services/branches';
@@ -57,6 +57,9 @@ const UserForm: React.FC = () => {
     try {
       const user = await usersApi.getUser(Number(id));
 
+      console.log('Fetched user:', user);
+      console.log('User role:', user.role);
+
       form.setFieldsValue({
         username: user.username,
         full_name: user.full_name,
@@ -67,11 +70,9 @@ const UserForm: React.FC = () => {
         is_active: user.is_active,
       });
 
-      const userWithPermissions = user as typeof user & {
-        permissions?: Permission[];
-      };
-
-      setSelectedPermissions(userWithPermissions.permissions?.map((p) => p.id) || []);
+      // Fetch user permissions separately
+      const userPermissions = await permissionsApi.getUserPermissions(Number(id));
+      setSelectedPermissions(userPermissions.map((p: Permission) => p.id));
     } catch (error) {
       console.error(error);
       message.error('Failed to fetch user details');
@@ -84,10 +85,28 @@ const UserForm: React.FC = () => {
   const fetchRoles = async () => {
     try {
       const data = await rolesApi.getRoles();
-      setRoles(Array.isArray(data) ? data : []);
+      console.log('Fetched roles:', data);
+      
+      const rolesArray = Array.isArray(data) ? data : [];
+      
+      // Fetch permissions for each role
+      const rolesWithPermissions = await Promise.all(
+        rolesArray.map(async (role) => {
+          try {
+            const rolePermissions = await rolesApi.getRolePermissions(role.id);
+            return { ...role, permissions: rolePermissions };
+          } catch (error) {
+            console.error(`Failed to fetch permissions for role ${role.id}:`, error);
+            return { ...role, permissions: [] };
+          }
+        })
+      );
+      
+      setRoles(rolesWithPermissions);
     } catch (error) {
       console.error('Failed to fetch roles:', error);
-      message.error('Failed to load roles');
+      setRoles([]);
+      // Don't show error message to user, just log it
     }
   };
 
@@ -97,7 +116,7 @@ const UserForm: React.FC = () => {
       setBranches(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch branches:', error);
-      message.error('Failed to load branches');
+      setBranches([]);
     }
   };
 
@@ -107,67 +126,94 @@ const UserForm: React.FC = () => {
       setPermissions(data || {});
     } catch (error) {
       console.error('Failed to fetch permissions:', error);
-      message.error('Failed to load permissions');
+      setPermissions({});
     }
   };
 
-  const onFinish = async (values: {
-    username: string;
-    password?: string;
-    confirm_password?: string;
-    full_name: string;
-    email: string;
-    phone?: string;
-    role: string;
-    branch_id?: number;
-    is_active?: boolean;
-  }) => {
+  const onFinish = async (values: any) => {
     setLoading(true);
     try {
+      // Validate password for new user
+      if (!isEdit && !values.password) {
+        message.error('Password is required');
+        setLoading(false);
+        return;
+      }
+
+      // Validate password match for new user
+      if (!isEdit && values.password !== values.confirm_password) {
+        message.error('Passwords do not match');
+        setLoading(false);
+        return;
+      }
+
       if (isEdit) {
-        await usersApi.updateUser(Number(id), {
+        const updateData: UserUpdate = {
           full_name: values.full_name,
           email: values.email,
-          phone: values.phone,
+          phone: values.phone || '',
           role: values.role,
           branch_id: values.branch_id,
-          is_active: values.is_active,
+          is_active: values.is_active !== undefined ? values.is_active : true,
           permissions: selectedPermissions,
-        });
+        };
+
+        console.log('Updating user with data:', updateData);
+        await usersApi.updateUser(Number(id), updateData);
         message.success('User updated successfully');
       } else {
-        if (!values.password) {
-          message.error('Password is required');
-          setLoading(false);
-          return;
-        }
-
-        await usersApi.createUser({
+        const createData: UserCreate = {
           username: values.username,
           password: values.password,
           full_name: values.full_name,
           email: values.email,
-          phone: values.phone,
+          phone: values.phone || '',
           role: values.role,
           branch_id: values.branch_id,
           permissions: selectedPermissions,
-        });
+        };
+
+        console.log('Creating user with data:', createData);
+        await usersApi.createUser(createData);
         message.success('User created successfully');
       }
 
       navigate('/users');
     } catch (error: any) {
-      console.error(error);
-      message.error(error?.response?.data?.detail || 'Failed to save user');
+      console.error('Error saving user:', error);
+      const errorMessage = error?.response?.data?.detail || error?.message || 'Failed to save user';
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRoleChange = (roleName: string) => {
+  const handleRoleChange = async (roleName: string) => {
+    console.log('Role changed to:', roleName);
     const selectedRole = roles.find((r) => r.name === roleName);
-    if (selectedRole?.permissions) {
-      setSelectedPermissions(selectedRole.permissions.map((p) => p.id));
+    
+    if (selectedRole?.permissions && selectedRole.permissions.length > 0) {
+      const permissionIds = selectedRole.permissions.map((p) => p.id);
+      setSelectedPermissions(permissionIds);
+      message.info(`Loaded ${permissionIds.length} permissions from role`);
+    } else if (selectedRole) {
+      // Try to fetch permissions for this role
+      try {
+        const rolePermissions = await rolesApi.getRolePermissions(selectedRole.id);
+        if (rolePermissions && rolePermissions.length > 0) {
+          const permissionIds = rolePermissions.map((p: Permission) => p.id);
+          setSelectedPermissions(permissionIds);
+          message.info(`Loaded ${permissionIds.length} permissions from role`);
+        } else {
+          setSelectedPermissions([]);
+          message.info('No permissions assigned to this role');
+        }
+      } catch (error) {
+        console.error('Failed to fetch role permissions:', error);
+        setSelectedPermissions([]);
+      }
+    } else {
+      setSelectedPermissions([]);
     }
   };
 
@@ -178,6 +224,13 @@ const UserForm: React.FC = () => {
         : [...prev, permissionId]
     );
   };
+
+  const roleOptions = [
+    { value: 'super_admin', label: 'Super Admin' },
+    { value: 'admin', label: 'Admin' },
+    { value: 'branch_manager', label: 'Branch Manager' },
+    { value: 'cashier', label: 'Cashier' },
+  ];
 
   return (
     <div className="p-6">
@@ -308,9 +361,9 @@ const UserForm: React.FC = () => {
                           placeholder="Select role"
                           onChange={handleRoleChange}
                         >
-                          {roles.map((role) => (
-                            <Option key={role.id} value={role.name}>
-                              {role.name.toUpperCase().replace(/_/g, ' ')}
+                          {roleOptions.map((role) => (
+                            <Option key={role.value} value={role.value}>
+                              {role.label}
                             </Option>
                           ))}
                         </Select>
@@ -373,36 +426,47 @@ const UserForm: React.FC = () => {
               children: (
                 <>
                   <div className="mb-4">
-                    <Button
-                      type="primary"
-                      onClick={() => form.submit()}
-                      loading={loading}
-                      icon={<SaveOutlined />}
-                    >
-                      {isEdit ? 'Update User' : 'Create User'}
-                    </Button>
+                    <Space>
+                      <Button
+                        type="primary"
+                        onClick={() => form.submit()}
+                        loading={loading}
+                        icon={<SaveOutlined />}
+                      >
+                        {isEdit ? 'Update User' : 'Create User'}
+                      </Button>
+                      <Button onClick={() => setActiveTab('basic')}>
+                        Back to Basic Info
+                      </Button>
+                    </Space>
                   </div>
 
-                  {Object.entries(permissions).map(([module, perms]) => (
-                    <Card key={module} title={module} className="mb-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {perms.map((perm) => (
-                          <Checkbox
-                            key={perm.id}
-                            checked={selectedPermissions.includes(perm.id)}
-                            onChange={() => togglePermission(perm.id)}
-                          >
-                            <div>
-                              <div className="font-medium">{perm.name}</div>
-                              <small className="text-gray-500">
-                                {perm.description}
-                              </small>
-                            </div>
-                          </Checkbox>
-                        ))}
-                      </div>
+                  {Object.keys(permissions).length === 0 ? (
+                    <Card>
+                      <p>No permissions available or failed to load permissions.</p>
                     </Card>
-                  ))}
+                  ) : (
+                    Object.entries(permissions).map(([module, perms]) => (
+                      <Card key={module} title={module} className="mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {perms.map((perm) => (
+                            <Checkbox
+                              key={perm.id}
+                              checked={selectedPermissions.includes(perm.id)}
+                              onChange={() => togglePermission(perm.id)}
+                            >
+                              <div>
+                                <div className="font-medium">{perm.name}</div>
+                                <small className="text-gray-500">
+                                  {perm.description}
+                                </small>
+                              </div>
+                            </Checkbox>
+                          ))}
+                        </div>
+                      </Card>
+                    ))
+                  )}
                 </>
               ),
             },

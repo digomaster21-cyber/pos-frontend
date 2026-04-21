@@ -27,6 +27,25 @@ export interface SyncExpenseSummary {
   total_amount: number;
 }
 
+// ADD THIS NEW INTERFACE
+export interface SyncExpenseDetail {
+  id: number;
+  expense_no: string;
+  branch_id: number;
+  category: string;
+  subcategory?: string;
+  amount: number;
+  description?: string;
+  expense_date: string;
+  paid_to?: string;
+  payment_method?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  recorded_by?: number;
+  recorder_name?: string;
+  rejection_reason?: string;
+  created_at: string;
+}
+
 export interface SyncStockItem {
   product_id: number;
   name: string;
@@ -44,6 +63,7 @@ export interface PreparedSyncData {
     sales: SyncSaleSummary;
     sales_details: SyncSaleDetail[];
     expenses: SyncExpenseSummary[];
+    expenses_details?: SyncExpenseDetail[];  // ADD THIS LINE
     stock: SyncStockItem[];
   };
 }
@@ -116,6 +136,12 @@ export const syncApi = {
     formData.append('file', file);
     if (companyId) formData.append('company_id', companyId);
     return api.post('/api/sync/receive', formData);
+  },
+
+  // ADD THIS METHOD
+  approveExpense: async (expenseId: number, data: { approved: boolean; rejection_reason?: string }): Promise<any> => {
+    const companyId = storage.getCompanyId();
+    return api.post(`/api/expenses/${expenseId}/approve?company_id=${companyId}`, data);
   },
 };
 

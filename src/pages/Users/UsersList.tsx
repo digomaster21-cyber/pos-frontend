@@ -70,6 +70,7 @@ const UsersList: React.FC = () => {
       setBranches(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
+      message.error('Failed to load branches');
     }
   };
 
@@ -122,7 +123,13 @@ const UsersList: React.FC = () => {
   };
 
   const formatRole = (role: User['role']) => {
-    return role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+    const roleMap: Record<string, string> = {
+      super_admin: 'Super Admin',
+      admin: 'Admin',
+      branch_manager: 'Branch Manager',
+      cashier: 'Cashier',
+    };
+    return roleMap[role] || role.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const columns: ColumnsType<User> = [
@@ -150,7 +157,15 @@ const UsersList: React.FC = () => {
       title: 'Role',
       dataIndex: 'role',
       key: 'role',
-      render: (role: User['role']) => <Tag color="blue">{formatRole(role)}</Tag>,
+      render: (role: User['role']) => {
+        const colorMap: Record<string, string> = {
+          super_admin: 'red',
+          admin: 'blue',
+          branch_manager: 'purple',
+          cashier: 'green',
+        };
+        return <Tag color={colorMap[role] || 'default'}>{formatRole(role)}</Tag>;
+      },
     },
     {
       title: 'Branch',
@@ -211,6 +226,13 @@ const UsersList: React.FC = () => {
     },
   ];
 
+  const roleOptions = [
+    { value: 'super_admin', label: 'Super Admin' },
+    { value: 'admin', label: 'Admin' },
+    { value: 'branch_manager', label: 'Branch Manager' },
+    { value: 'cashier', label: 'Cashier' },
+  ];
+
   return (
     <div className="p-6">
       <Card className="shadow-md">
@@ -261,10 +283,11 @@ const UsersList: React.FC = () => {
                 value={selectedRole}
                 onChange={(value) => setSelectedRole(value)}
               >
-                <Option value="super_admin">Super Admin</Option>
-                <Option value="admin">Admin</Option>
-                <Option value="branch_manager">Branch Manager</Option>
-                <Option value="cashier">Cashier</Option>
+                {roleOptions.map((role) => (
+                  <Option key={role.value} value={role.value}>
+                    {role.label}
+                  </Option>
+                ))}
               </Select>
             </Col>
 
@@ -324,6 +347,7 @@ const UsersList: React.FC = () => {
               pageSize: 10,
               showSizeChanger: true,
               pageSizeOptions: ['10', '20', '50'],
+              showTotal: (total) => `Total ${total} users`,
             }}
           />
         </div>

@@ -1,0 +1,17 @@
+# Create the render.yaml file (this creates the file, doesn't run it)
+cat > render.yaml << 'EOF'
+services:
+  - type: web
+    name: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: |
+      mkdir -p backend/data
+      mkdir -p backend/data/backups
+      mkdir -p backend/sync_data
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT
+EOF
+
+# Add it to git
+git add render.yaml
+git commit -m "Add render.yaml configuration"
+git push origin main

@@ -15,6 +15,9 @@ import {
   Typography,
   Upload,
   Divider,
+  Modal,
+  Input,
+  
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -24,12 +27,15 @@ import {
   InboxOutlined,
   ReloadOutlined,
   SyncOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
   PreparedSyncData,
-  SyncExpenseSummary,
+  
   SyncLogItem,
   SyncSaleDetail,
   SyncStockItem,
@@ -42,6 +48,8 @@ import {
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
+const { TextArea } = Input;
+
 
 const currency = (value?: number) =>
   new Intl.NumberFormat('en-TZ', {
@@ -53,6 +61,11 @@ const currency = (value?: number) =>
 const SyncPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [preparedData, setPreparedData] = useState<PreparedSyncData | null>(null);
+  const [approveModalVisible, setApproveModalVisible] = useState(false);
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<any>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [expenseFilter, setExpenseFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
 
   const {
     data: status,
@@ -112,6 +125,45 @@ const SyncPage: React.FC = () => {
     },
   });
 
+  const handleApproveExpense = async () => {
+    if (!selectedExpense) return;
+    
+    try {
+      // Call API to approve expense
+      await syncApi.approveExpense(selectedExpense.id, { approved: true });
+      message.success('Expense approved successfully');
+      setApproveModalVisible(false);
+      setSelectedExpense(null);
+      // Refresh the prepared data
+      prepareMutation.mutate();
+    } catch (error: any) {
+      message.error(error?.message || 'Failed to approve expense');
+    }
+  };
+
+  const handleRejectExpense = async () => {
+    if (!selectedExpense) return;
+    
+    if (!rejectionReason) {
+      message.warning('Please provide a rejection reason');
+      return;
+    }
+    
+    try {
+      await syncApi.approveExpense(selectedExpense.id, { 
+        approved: false, 
+        rejection_reason: rejectionReason 
+      });
+      message.success('Expense rejected');
+      setRejectModalVisible(false);
+      setSelectedExpense(null);
+      setRejectionReason('');
+      prepareMutation.mutate();
+    } catch (error: any) {
+      message.error(error?.message || 'Failed to reject expense');
+    }
+  };
+
   const salesColumns: ColumnsType<SyncSaleDetail> = [
     { title: 'Invoice', dataIndex: 'invoice_no', key: 'invoice_no' },
     { title: 'Product ID', dataIndex: 'product_id', key: 'product_id' },
@@ -154,14 +206,72 @@ const SyncPage: React.FC = () => {
     },
   ];
 
-  const expensesColumns: ColumnsType<SyncExpenseSummary> = [
-    { title: 'Category', dataIndex: 'category', key: 'category' },
-    { title: 'Count', dataIndex: 'count', key: 'count', width: 100 },
-    {
-      title: 'Total Amount',
-      dataIndex: 'total_amount',
-      key: 'total_amount',
+  const expensesColumns: ColumnsType<any> = [
+    { title: 'Expense No', dataIndex: 'expense_no', key: 'expense_no', width: 150 },
+    { 
+      title: 'Date', 
+      dataIndex: 'expense_date', 
+      key: 'expense_date',
+      render: (value: string) => value ? dayjs(value).format('DD/MM/YYYY') : '-',
+      width: 120,
+    },
+    { title: 'Category', dataIndex: 'category', key: 'category', width: 130 },
+    { 
+      title: 'Amount', 
+      dataIndex: 'amount', 
+      key: 'amount',
       render: (value: number) => currency(value),
+      align: 'right' as const,
+    },
+    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
+    { title: 'Paid To', dataIndex: 'paid_to', key: 'paid_to', width: 150 },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (status: string) => {
+        if (status === 'approved') return <Tag color="green">Approved</Tag>;
+        if (status === 'rejected') return <Tag color="red">Rejected</Tag>;
+        return <Tag color="orange">Pending</Tag>;
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 150,
+      render: (_, record: any) => (
+        record.status === 'pending' ? (
+          <Space>
+            <Button 
+              type="primary" 
+              size="small"
+              icon={<CheckOutlined />} 
+              onClick={() => {
+                setSelectedExpense(record);
+                setApproveModalVisible(true);
+              }}
+            >
+              Approve
+            </Button>
+            <Button 
+              danger 
+              size="small"
+              icon={<CloseOutlined />} 
+              onClick={() => {
+                setSelectedExpense(record);
+                setRejectModalVisible(true);
+              }}
+            >
+              Reject
+            </Button>
+          </Space>
+        ) : (
+          <Tag color={record.status === 'approved' ? 'green' : 'red'}>
+            {record.status}
+          </Tag>
+        )
+      ),
     },
   ];
 
@@ -223,15 +333,32 @@ const SyncPage: React.FC = () => {
   const preparedSummary = useMemo(() => {
     if (!preparedData) return null;
 
+    const pendingExpenses = preparedData.data.expenses_details?.filter((e: any) => e.status === 'pending') || [];
+    const approvedExpenses = preparedData.data.expenses_details?.filter((e: any) => e.status === 'approved') || [];
+    const rejectedExpenses = preparedData.data.expenses_details?.filter((e: any) => e.status === 'rejected') || [];
+
     return {
       salesCount: preparedData.data.sales?.count || 0,
       totalSales: preparedData.data.sales?.total_sales || 0,
       totalProfit: preparedData.data.sales?.total_profit || 0,
       salesDetailsCount: preparedData.data.sales_details?.length || 0,
       expensesCount: preparedData.data.expenses?.length || 0,
+      expensesDetailsCount: preparedData.data.expenses_details?.length || 0,
+      pendingExpensesCount: pendingExpenses.length,
+      approvedExpensesCount: approvedExpenses.length,
+      rejectedExpensesCount: rejectedExpenses.length,
+      totalExpenseAmount: preparedData.data.expenses_details?.reduce((sum: number, e: any) => sum + (e.amount || 0), 0) || 0,
+      pendingExpenseAmount: pendingExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0),
       stockCount: preparedData.data.stock?.length || 0,
     };
   }, [preparedData]);
+
+  const filteredExpenses = useMemo(() => {
+    if (!preparedData?.data.expenses_details) return [];
+    
+    if (expenseFilter === 'all') return preparedData.data.expenses_details;
+    return preparedData.data.expenses_details.filter((e: any) => e.status === expenseFilter);
+  }, [preparedData, expenseFilter]);
 
   return (
     <div style={{ padding: 24 }}>
@@ -279,12 +406,12 @@ const SyncPage: React.FC = () => {
       </Space>
 
       <Alert
-  type="info"
-  showIcon
-  style={{ marginBottom: 20 }}
-  title="Sync workflow"
-  description="Prepare data from the branch, review the generated summary, then upload to main store. Main store can also import sync files from branches."
-/>
+        type="info"
+        showIcon
+        style={{ marginBottom: 20 }}
+        title="Sync workflow with Expense Approval"
+        description="Prepare data from the branch, review pending expenses, approve/reject them, then upload to main store. Main store can also import sync files from branches."
+      />
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
@@ -299,7 +426,11 @@ const SyncPage: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card loading={statusLoading}>
-            <Statistic title="Pending Expenses" value={status?.pending_expenses_count || 0} />
+            <Statistic 
+              title="Pending Expenses" 
+              value={status?.pending_expenses_count || 0}
+              valueStyle={{ color: '#faad14' }}
+            />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
@@ -397,6 +528,47 @@ const SyncPage: React.FC = () => {
               </Col>
             </Row>
 
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              <Col xs={24} sm={12} lg={6}>
+                <Card size="small" style={{ backgroundColor: '#fff7e6' }}>
+                  <Statistic 
+                    title="Pending Expenses" 
+                    value={preparedSummary.pendingExpensesCount}
+                    valueStyle={{ color: '#faad14' }}
+                    prefix={<DollarOutlined />}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <Card size="small" style={{ backgroundColor: '#f6ffed' }}>
+                  <Statistic 
+                    title="Pending Expense Amount" 
+                    value={preparedSummary.pendingExpenseAmount}
+                    formatter={(value) => currency(Number(value))}
+                    valueStyle={{ color: '#3f8600' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <Card size="small" style={{ backgroundColor: '#f6ffed' }}>
+                  <Statistic 
+                    title="Approved Expenses" 
+                    value={preparedSummary.approvedExpensesCount}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <Card size="small" style={{ backgroundColor: '#fff1f0' }}>
+                  <Statistic 
+                    title="Rejected Expenses" 
+                    value={preparedSummary.rejectedExpensesCount}
+                    valueStyle={{ color: '#ff4d4f' }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+
             <Descriptions bordered column={2} size="small" style={{ marginBottom: 16 }}>
               <Descriptions.Item label="Branch ID">{preparedData.branch_id}</Descriptions.Item>
               <Descriptions.Item label="Sync Timestamp">
@@ -405,8 +577,8 @@ const SyncPage: React.FC = () => {
               <Descriptions.Item label="Sales Detail Rows">
                 {preparedSummary.salesDetailsCount}
               </Descriptions.Item>
-              <Descriptions.Item label="Expense Categories">
-                {preparedSummary.expensesCount}
+              <Descriptions.Item label="Expense Records">
+                {preparedSummary.expensesDetailsCount}
               </Descriptions.Item>
               <Descriptions.Item label="From Date">
                 {preparedData.data.sales?.from_date || '-'}
@@ -425,12 +597,48 @@ const SyncPage: React.FC = () => {
               scroll={{ x: 1200 }}
             />
 
-            <Divider titlePlacement="start">Expense Summary</Divider>
+            <Divider titlePlacement="start">
+              <Space>
+                <DollarOutlined />
+                Expense Approvals
+              </Space>
+            </Divider>
+            
+            <div style={{ marginBottom: 16 }}>
+              <Space>
+                <Button 
+                  type={expenseFilter === 'pending' ? 'primary' : 'default'}
+                  onClick={() => setExpenseFilter('pending')}
+                >
+                  Pending
+                </Button>
+                <Button 
+                  type={expenseFilter === 'approved' ? 'primary' : 'default'}
+                  onClick={() => setExpenseFilter('approved')}
+                >
+                  Approved
+                </Button>
+                <Button 
+                  type={expenseFilter === 'rejected' ? 'primary' : 'default'}
+                  onClick={() => setExpenseFilter('rejected')}
+                >
+                  Rejected
+                </Button>
+                <Button 
+                  type={expenseFilter === 'all' ? 'primary' : 'default'}
+                  onClick={() => setExpenseFilter('all')}
+                >
+                  All
+                </Button>
+              </Space>
+            </div>
+
             <Table
-              rowKey={(record) => `${record.category}-${record.count}`}
+              rowKey={(record) => `${record.id}-${record.expense_no}`}
               columns={expensesColumns}
-              dataSource={preparedData.data.expenses || []}
+              dataSource={filteredExpenses}
               pagination={{ pageSize: 5 }}
+              scroll={{ x: 1200 }}
             />
 
             <Divider titlePlacement="start">Stock Snapshot</Divider>
@@ -465,6 +673,74 @@ const SyncPage: React.FC = () => {
           scroll={{ x: 1100 }}
         />
       </Card>
+
+      {/* Approve Expense Modal */}
+      <Modal
+        title="Approve Expense"
+        open={approveModalVisible}
+        onCancel={() => {
+          setApproveModalVisible(false);
+          setSelectedExpense(null);
+        }}
+        footer={[
+          <Button key="cancel" onClick={() => setApproveModalVisible(false)}>
+            Cancel
+          </Button>,
+          <Button key="approve" type="primary" icon={<CheckOutlined />} onClick={handleApproveExpense}>
+            Confirm Approve
+          </Button>,
+        ]}
+      >
+        {selectedExpense && (
+          <div>
+            <p><strong>Expense No:</strong> {selectedExpense.expense_no}</p>
+            <p><strong>Date:</strong> {dayjs(selectedExpense.expense_date).format('DD/MM/YYYY')}</p>
+            <p><strong>Category:</strong> {selectedExpense.category}</p>
+            <p><strong>Amount:</strong> {currency(selectedExpense.amount)}</p>
+            <p><strong>Description:</strong> {selectedExpense.description}</p>
+            <p><strong>Paid To:</strong> {selectedExpense.paid_to || '-'}</p>
+            <p><strong>Recorded By:</strong> {selectedExpense.recorder_name || '-'}</p>
+          </div>
+        )}
+      </Modal>
+
+      {/* Reject Expense Modal */}
+      <Modal
+        title="Reject Expense"
+        open={rejectModalVisible}
+        onCancel={() => {
+          setRejectModalVisible(false);
+          setSelectedExpense(null);
+          setRejectionReason('');
+        }}
+        footer={[
+          <Button key="cancel" onClick={() => setRejectModalVisible(false)}>
+            Cancel
+          </Button>,
+          <Button key="reject" danger icon={<CloseOutlined />} onClick={handleRejectExpense}>
+            Confirm Reject
+          </Button>,
+        ]}
+      >
+        {selectedExpense && (
+          <div>
+            <p><strong>Expense No:</strong> {selectedExpense.expense_no}</p>
+            <p><strong>Amount:</strong> {currency(selectedExpense.amount)}</p>
+            <p><strong>Description:</strong> {selectedExpense.description}</p>
+            
+            <div style={{ marginTop: 16 }}>
+              <strong>Rejection Reason:</strong>
+              <TextArea
+                rows={4}
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Please provide a reason for rejection..."
+                style={{ marginTop: 8 }}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
