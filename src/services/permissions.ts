@@ -9,15 +9,13 @@ export const permissionsApi = {
     params.append('company_id', companyId || '');
     if (module) params.append('module', module);
     
-    const response = await api.get<Permission[]>(`/api/permissions?${params.toString()}`);
-    return response.data;
+    return await api.get(`/api/permissions?${params.toString()}`);
   },
 
   getPermissionsByModule: async (): Promise<Record<string, Permission[]>> => {
     const companyId = storage.getCompanyId();
     try {
-      const response = await api.get<Record<string, Permission[]>>(`/api/permissions/by-module?company_id=${companyId}`);
-      return response.data;
+      return await api.get(`/api/permissions/by-module?company_id=${companyId}`);
     } catch (error) {
       console.error('Error fetching permissions by module:', error);
       return {};
@@ -27,8 +25,7 @@ export const permissionsApi = {
   getUserPermissions: async (userId: number): Promise<Permission[]> => {
     const companyId = storage.getCompanyId();
     try {
-      const response = await api.get<Permission[]>(`/api/users/${userId}/permissions?company_id=${companyId}`);
-      return response.data;
+      return await api.get(`/api/users/${userId}/permissions?company_id=${companyId}`);
     } catch (error) {
       console.error(`Error fetching permissions for user ${userId}:`, error);
       return [];
@@ -37,29 +34,26 @@ export const permissionsApi = {
 
   getModules: async (): Promise<string[]> => {
     const companyId = storage.getCompanyId();
-    const response = await api.get<{ modules: string[] }>(`/api/permissions/modules?company_id=${companyId}`);
-    return response.data.modules || [];
+    const response = await api.get(`/api/permissions/modules?company_id=${companyId}`);
+    return (response as any).modules || [];
   },
 
   createPermission: async (permission: PermissionCreate): Promise<Permission> => {
     const companyId = storage.getCompanyId();
-    const response = await api.post<Permission>('/api/permissions', {
+    return await api.post('/api/permissions', {
       ...permission,
       company_id: companyId
     });
-    return response.data;
   },
 
   updatePermission: async (id: number, permission: PermissionCreate): Promise<Permission> => {
     const companyId = storage.getCompanyId();
-    const response = await api.put<Permission>(`/api/permissions/${id}?company_id=${companyId}`, permission);
-    return response.data;
+    return await api.put(`/api/permissions/${id}?company_id=${companyId}`, permission);
   },
 
   deletePermission: async (id: number): Promise<{ message: string }> => {
     const companyId = storage.getCompanyId();
-    const response = await api.delete<{ message: string }>(`/api/permissions/${id}?company_id=${companyId}`);
-    return response.data;
+    return await api.delete(`/api/permissions/${id}?company_id=${companyId}`);
   },
 };
 
