@@ -10,8 +10,16 @@ export const storage = {
     if (typeof window === 'undefined') return null;
     
     try {
-      // For security, consider using httpOnly cookies in production
-      return localStorage.getItem(TOKEN_KEY);
+      const token = localStorage.getItem(TOKEN_KEY);
+      // Check if token is valid (not undefined, null, or 'undefined' string)
+      if (token && token !== 'undefined' && token !== 'null') {
+        return token;
+      }
+      // Clear invalid token
+      if (token === 'undefined' || token === 'null') {
+        localStorage.removeItem(TOKEN_KEY);
+      }
+      return null;
     } catch (error) {
       console.error('Error reading token from storage:', error);
       return null;
@@ -20,7 +28,9 @@ export const storage = {
 
   setToken(token: string): void {
     try {
-      localStorage.setItem(TOKEN_KEY, token);
+      if (token && token !== 'undefined' && token !== 'null') {
+        localStorage.setItem(TOKEN_KEY, token);
+      }
     } catch (error) {
       console.error('Error saving token to storage:', error);
     }
@@ -39,16 +49,27 @@ export const storage = {
   getUser(): any | null {
     try {
       const user = localStorage.getItem(USER_KEY);
-      return user ? JSON.parse(user) : null;
+      if (user && user !== 'undefined' && user !== 'null') {
+        return JSON.parse(user);
+      }
+      // Clear invalid user data
+      if (user === 'undefined' || user === 'null') {
+        localStorage.removeItem(USER_KEY);
+      }
+      return null;
     } catch (error) {
       console.error('Error reading user from storage:', error);
+      // Clear corrupted data
+      localStorage.removeItem(USER_KEY);
       return null;
     }
   },
 
   setUser(user: any): void {
     try {
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      if (user && user !== 'undefined' && user !== 'null') {
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
+      }
     } catch (error) {
       console.error('Error saving user to storage:', error);
     }
@@ -59,7 +80,14 @@ export const storage = {
     if (typeof window === 'undefined') return null;
     
     try {
-      return localStorage.getItem(COMPANY_ID_KEY);
+      const companyId = localStorage.getItem(COMPANY_ID_KEY);
+      if (companyId && companyId !== 'undefined' && companyId !== 'null') {
+        return companyId;
+      }
+      if (companyId === 'undefined' || companyId === 'null') {
+        localStorage.removeItem(COMPANY_ID_KEY);
+      }
+      return null;
     } catch (error) {
       console.error('Error reading company ID from storage:', error);
       return null;
@@ -68,7 +96,9 @@ export const storage = {
 
   setCompanyId(companyId: string | number): void {
     try {
-      localStorage.setItem(COMPANY_ID_KEY, String(companyId));
+      if (companyId && companyId !== 'undefined' && companyId !== 'null') {
+        localStorage.setItem(COMPANY_ID_KEY, String(companyId));
+      }
     } catch (error) {
       console.error('Error saving company ID to storage:', error);
     }
@@ -87,7 +117,14 @@ export const storage = {
     if (typeof window === 'undefined') return null;
     
     try {
-      return localStorage.getItem(BRANCH_ID_KEY);
+      const branchId = localStorage.getItem(BRANCH_ID_KEY);
+      if (branchId && branchId !== 'undefined' && branchId !== 'null') {
+        return branchId;
+      }
+      if (branchId === 'undefined' || branchId === 'null') {
+        localStorage.removeItem(BRANCH_ID_KEY);
+      }
+      return null;
     } catch (error) {
       console.error('Error reading branch ID from storage:', error);
       return null;
@@ -96,7 +133,9 @@ export const storage = {
 
   setBranchId(branchId: string | number): void {
     try {
-      localStorage.setItem(BRANCH_ID_KEY, String(branchId));
+      if (branchId && branchId !== 'undefined' && branchId !== 'null') {
+        localStorage.setItem(BRANCH_ID_KEY, String(branchId));
+      }
     } catch (error) {
       console.error('Error saving branch ID to storage:', error);
     }
@@ -114,7 +153,10 @@ export const storage = {
   getQueue(): any[] {
     try {
       const queue = localStorage.getItem(QUEUE_KEY);
-      return queue ? JSON.parse(queue) : [];
+      if (queue && queue !== 'undefined' && queue !== 'null') {
+        return JSON.parse(queue);
+      }
+      return [];
     } catch (error) {
       console.error('Error reading queue from storage:', error);
       return [];
@@ -160,5 +202,24 @@ export const storage = {
     this.clearQueue();
     this.clearCompanyId();
     this.clearBranchId();
+  },
+  
+  // Add this method to check and fix storage
+  fixStorage(): void {
+    console.log('🔧 Fixing storage...');
+    const keys = [TOKEN_KEY, USER_KEY, COMPANY_ID_KEY, BRANCH_ID_KEY, QUEUE_KEY];
+    keys.forEach(key => {
+      const value = localStorage.getItem(key);
+      if (value === 'undefined' || value === 'null') {
+        console.log(`Removing invalid ${key}`);
+        localStorage.removeItem(key);
+      }
+    });
+    console.log('✅ Storage fixed');
   }
 };
+
+// Auto-fix storage on import
+if (typeof window !== 'undefined') {
+  storage.fixStorage();
+}

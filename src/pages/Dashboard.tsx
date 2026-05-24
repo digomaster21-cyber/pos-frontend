@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Card,
   Row,
@@ -82,17 +82,39 @@ const Dashboard = () => {
     fetchBusinessDashboard();
   }, [period]);
 
-  // Fetch functions
+  // Fetch functions - FIXED
   const fetchDashboard = async () => {
-    try {
-      const data = await dashboardApi.getSummary();
-      setSummary(data);
-    } catch (error) {
-      console.error(error);
-      message.error('Failed to load dashboard summary');
-    }
-  };
-
+  try {
+    const data = await dashboardApi.getSummary();
+    console.log('Dashboard summary data:', data);
+    
+    // data is now properly typed as DashboardSummary
+    setSummary({
+      today: {
+        transactions: data.today.transactions,
+        revenue: data.today.revenue,
+        profit: data.today.profit
+      },
+      month_to_date: {
+        transactions: data.month_to_date.transactions,
+        revenue: data.month_to_date.revenue,
+        profit: data.month_to_date.profit
+      },
+      alerts: {
+        low_stock: data.alerts.low_stock,
+        pending_approvals: data.alerts.pending_approvals
+      }
+    });
+  } catch (error) {
+    console.error('Dashboard summary error:', error);
+    message.error('Failed to load dashboard summary');
+    setSummary({
+      today: { transactions: 0, revenue: 0, profit: 0 },
+      month_to_date: { transactions: 0, revenue: 0, profit: 0 },
+      alerts: { low_stock: 0, pending_approvals: 0 }
+    });
+  }
+};
   const fetchBranches = async () => {
     try {
       const data = await branchesApi.getBranches(true);
@@ -121,6 +143,7 @@ const Dashboard = () => {
     setLoadingBusiness(true);
     try {
       const data = await reportsApi.getBusinessDashboard(period);
+      console.log('Business dashboard data:', data);
       setBusinessData(data);
     } catch (error) {
       console.error('Failed to fetch business dashboard:', error);
@@ -133,13 +156,13 @@ const Dashboard = () => {
   const formatTZS = (value: number) => `TZS ${Number(value || 0).toLocaleString()}`;
 
   const avgTodaySale = useMemo(() => {
-    if (!summary?.today?.transactions) return 0;
-    return summary.today.revenue / summary.today.transactions;
+    if (!summary?.today?.transactions || summary.today.transactions === 0) return 0;
+    return (summary.today.revenue || 0) / summary.today.transactions;
   }, [summary]);
 
   const avgMonthSale = useMemo(() => {
-    if (!summary?.month_to_date?.transactions) return 0;
-    return summary.month_to_date.revenue / summary.month_to_date.transactions;
+    if (!summary?.month_to_date?.transactions || summary.month_to_date.transactions === 0) return 0;
+    return (summary.month_to_date.revenue || 0) / summary.month_to_date.transactions;
   }, [summary]);
 
   const chartData = useMemo(() => {
@@ -151,6 +174,11 @@ const Dashboard = () => {
 
   // Colors for pie chart
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#f44336', '#9c27b0'];
+
+  // Low stock alerts
+  const criticalStock = businessData?.low_stock_alerts?.critical || [];
+  const warningStock = businessData?.low_stock_alerts?.warning || [];
+  const totalLowStockCount = businessData?.low_stock_alerts?.count || 0;
 
   // PDF Handler Functions
   const handleDownloadPDF = () => {
@@ -206,10 +234,12 @@ const Dashboard = () => {
   // Category margins data
   const categoryMarginData = businessData?.category_margins || [];
 
-  // Low stock alerts
-  const criticalStock = businessData?.low_stock_alerts?.critical || [];
-  const warningStock = businessData?.low_stock_alerts?.warning || [];
-  const totalLowStockCount = businessData?.low_stock_alerts?.count || 0;
+  // Debug log to see what's being displayed
+  useEffect(() => {
+    console.log('Current summary state:', summary);
+    console.log('Today revenue:', summary?.today?.revenue);
+    console.log('Month revenue:', summary?.month_to_date?.revenue);
+  }, [summary]);
 
   if (loadingBusiness && !businessData) {
     return (
@@ -234,8 +264,12 @@ const Dashboard = () => {
             <Option value="month">This Month</Option>
             <Option value="year">This Year</Option>
           </Select>
-          <Tooltip title="Download PDF"><Button icon={<DownloadOutlined />} onClick={handleDownloadPDF}>PDF</Button></Tooltip>
-          <Tooltip title="Print"><Button icon={<PrinterOutlined />} onClick={handlePrint}>Print</Button></Tooltip>
+          <Tooltip title="Download PDF">
+            <Button icon={<DownloadOutlined />} onClick={handleDownloadPDF}>PDF</Button>
+          </Tooltip>
+          <Tooltip title="Print">
+            <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print</Button>
+          </Tooltip>
           <Tooltip title="Share on WhatsApp">
             <Button 
               icon={<WhatsAppOutlined />} 
@@ -255,7 +289,7 @@ const Dashboard = () => {
             <Input 
               placeholder="Enter WhatsApp number (e.g., 25561567655)" 
               value={whatsappNumber} 
-              onChange={(e) => setWhatsappNumber(e.target.value)} 
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWhatsappNumber(e.target.value)} 
               style={{ width: 300 }} 
             />
             <Button type="primary" onClick={handleWhatsAppShare} style={{ background: '#25D366' }}>
@@ -267,13 +301,13 @@ const Dashboard = () => {
       )}
 
       {/* Profit & Loss Summary Card */}
-      {businessData && (
+      {businessData && businessData.profit_loss && (
         <Card style={{ marginBottom: 24, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
           <Row gutter={24}>
             <Col xs={24} sm={12} lg={6}>
               <Statistic 
                 title={<span style={{ color: 'white' }}>Total Sales</span>} 
-                value={businessData.profit_loss?.total_sales || 0} 
+                value={businessData.profit_loss.total_sales || 0} 
                 precision={0} 
                 prefix="TZS" 
                 valueStyle={{ color: 'white', fontSize: 28 }} 
@@ -282,17 +316,17 @@ const Dashboard = () => {
             <Col xs={24} sm={12} lg={6}>
               <Statistic 
                 title={<span style={{ color: 'white' }}>Gross Profit</span>} 
-                value={businessData.profit_loss?.gross_profit || 0} 
+                value={businessData.profit_loss.gross_profit || 0} 
                 precision={0} 
                 prefix="TZS" 
                 valueStyle={{ color: '#90EE90', fontSize: 28 }} 
               />
-              <Progress percent={businessData.profit_loss?.gross_margin || 0} size="small" strokeColor="#90EE90" />
+              <Progress percent={businessData.profit_loss.gross_margin || 0} size="small" strokeColor="#90EE90" />
             </Col>
             <Col xs={24} sm={12} lg={6}>
               <Statistic 
                 title={<span style={{ color: 'white' }}>Total Expenses</span>} 
-                value={businessData.profit_loss?.total_expenses || 0} 
+                value={businessData.profit_loss.total_expenses || 0} 
                 precision={0} 
                 prefix="TZS" 
                 valueStyle={{ color: '#FFB6C1', fontSize: 28 }} 
@@ -301,12 +335,12 @@ const Dashboard = () => {
             <Col xs={24} sm={12} lg={6}>
               <Statistic 
                 title={<span style={{ color: 'white' }}>Net Profit</span>} 
-                value={businessData.profit_loss?.net_profit || 0} 
+                value={businessData.profit_loss.net_profit || 0} 
                 precision={0} 
                 prefix="TZS" 
                 valueStyle={{ color: '#FFD700', fontSize: 32, fontWeight: 'bold' }} 
               />
-              <Progress percent={businessData.profit_loss?.net_margin || 0} size="small" strokeColor="#FFD700" />
+              <Progress percent={businessData.profit_loss.net_margin || 0} size="small" strokeColor="#FFD700" />
             </Col>
           </Row>
         </Card>

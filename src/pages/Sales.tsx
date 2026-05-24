@@ -25,14 +25,23 @@ export const Sales: React.FC = () => {
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
   const [cancelReason, setCancelReason] = useState('');
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Get current datetime in local format for datetime-local input
+  const getCurrentDateTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
 
   const [form, setForm] = useState<SaleCreatePayload>({
     branch_id: 1,
     product_id: 0,
     quantity: 1,
     unit_price: 0,
-    sale_date: today,
+    sale_date: getCurrentDateTime(), // Now includes time
     customer_name: '',
     payment_method: 'cash',
     notes: '',
@@ -72,8 +81,9 @@ export const Sales: React.FC = () => {
         branch_id: Number(branchId || 1),
       });
 
+      // FIXED: Changed from item.quantity to item.current_quantity
       const item = stock.find((s) => s.id === productId);
-      setAvailableStock(item?.quantity || 0);
+      setAvailableStock(item?.current_quantity || 0);
     } catch {
       setAvailableStock(0);
     }
@@ -108,12 +118,16 @@ export const Sales: React.FC = () => {
     setSuccessMessage('');
 
     try {
+      // Convert datetime-local value to ISO string for backend
+      const saleDateTime = form.sale_date ? new Date(form.sale_date).toISOString() : new Date().toISOString();
+      
       await salesApi.createSale({
         ...form,
         branch_id: Number(form.branch_id),
         product_id: Number(form.product_id),
         quantity: Number(form.quantity),
         unit_price: Number(form.unit_price),
+        sale_date: saleDateTime,
       });
 
       setShowCreateModal(false);
@@ -124,7 +138,7 @@ export const Sales: React.FC = () => {
         product_id: 0,
         quantity: 1,
         unit_price: 0,
-        sale_date: today,
+        sale_date: getCurrentDateTime(),
         customer_name: '',
         payment_method: 'cash',
         notes: '',
@@ -173,6 +187,16 @@ export const Sales: React.FC = () => {
       setError(err?.message || 'Failed to cancel sale');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const formatDateTime = (dateTimeStr: string) => {
+    if (!dateTimeStr) return '-';
+    try {
+      const date = new Date(dateTimeStr);
+      return date.toLocaleString();
+    } catch {
+      return dateTimeStr;
     }
   };
 
@@ -235,7 +259,7 @@ export const Sales: React.FC = () => {
               <thead>
                 <tr>
                   <th align="left">Invoice</th>
-                  <th align="left">Date</th>
+                  <th align="left">Date & Time</th>
                   <th align="left">Product</th>
                   <th align="left">Qty</th>
                   <th align="left">Unit Price</th>
@@ -251,7 +275,7 @@ export const Sales: React.FC = () => {
                 {sales.map((sale) => (
                   <tr key={sale.id}>
                     <td>{sale.invoice_no}</td>
-                    <td>{sale.sale_date}</td>
+                    <td>{formatDateTime(sale.sale_date)}</td>
                     <td>{sale.product_name || sale.product_id}</td>
                     <td>{sale.quantity}</td>
                     <td>TZS {Number(sale.unit_price || 0).toLocaleString()}</td>
@@ -434,10 +458,10 @@ export const Sales: React.FC = () => {
 
             <div>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                Sale Date
+                Sale Date & Time
               </label>
               <Input
-                type="date"
+                type="datetime-local"
                 value={form.sale_date}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setForm((prev) => ({
@@ -447,7 +471,7 @@ export const Sales: React.FC = () => {
                 }
               />
               <small style={{ color: '#6b7280' }}>
-                Date when the sale happened.
+                Date and time when the sale happened.
               </small>
             </div>
 

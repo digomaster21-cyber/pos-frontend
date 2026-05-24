@@ -168,8 +168,9 @@ export const Inventory: React.FC = () => {
     0
   );
 
+  // FIXED: Changed from item.quantity to item.current_quantity
   const totalUnits = filteredInventory.reduce(
-    (sum, item) => sum + (item.quantity || 0),
+    (sum, item) => sum + (item.current_quantity || 0),
     0
   );
 
@@ -326,7 +327,8 @@ export const Inventory: React.FC = () => {
                         <td>{item.sku}</td>
                         <td>{item.name}</td>
                         <td>{item.category}</td>
-                        <td>{item.quantity}</td>
+                        {/* FIXED: Changed from item.quantity to item.current_quantity */}
+                        <td>{item.current_quantity || 0}</td>
                         <td>TZS {Number(item.current_avg_cost || 0).toLocaleString()}</td>
                         <td>TZS {Number(item.selling_price || 0).toLocaleString()}</td>
                         <td
@@ -370,7 +372,6 @@ export const Inventory: React.FC = () => {
       >
         <form onSubmit={handleCreateProduct}>
           <div style={{ display: 'grid', gap: '16px' }}>
-            {/* Form fields - keep your existing form fields here */}
             <div>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>SKU</label>
               <Input

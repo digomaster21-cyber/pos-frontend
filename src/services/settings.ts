@@ -1,89 +1,76 @@
-// Update src/api/settings.ts
-import api from './api';
+import { apiClient } from '../api/client';
 import { storage } from '../utils/storage';
 
-export interface Backup {
-  filename: string;
-  size: string;
-  created_at: string;
-  type: string;
-}
-
-export interface SyncStatus {
-  last_sync: string | null;
-  pending_records: number;
-  status: string;
-}
+const addCompanyId = (params: URLSearchParams): URLSearchParams => {
+  const companyId = storage.getCompanyId();
+  if (companyId) params.append('company_id', companyId);
+  return params;
+};
 
 export const settingsApi = {
-  getSystemSettings: async (): Promise<any> => {
-    const companyId = storage.getCompanyId();
-    return api.get(`/api/settings?company_id=${companyId}`);
+  getSystemSettings: async () => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.get(`/api/settings/system?${params.toString()}`);
   },
 
-  updateSystemSettings: async (settings: any): Promise<any> => {
-    const companyId = storage.getCompanyId();
-    return api.put(`/api/settings?company_id=${companyId}`, settings);
+  updateSystemSettings: async (settings: any) => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.put(`/api/settings/system?${params.toString()}`, settings);
   },
 
-  getBackups: async (): Promise<Backup[]> => {
-    const companyId = storage.getCompanyId();
-    return api.get(`/api/settings/backups?company_id=${companyId}`);
+  getBackups: async () => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.get(`/api/settings/backups?${params.toString()}`);
   },
 
-  createBackup: async (): Promise<{ message: string }> => {
-    const companyId = storage.getCompanyId();
-    return api.post(`/api/settings/backups?company_id=${companyId}`, {});
+  createBackup: async () => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.post(`/api/settings/backups?${params.toString()}`);
   },
 
-  restoreBackup: async (filename: string): Promise<{ message: string }> => {
-    const companyId = storage.getCompanyId();
-    return api.post(`/api/settings/backups/${filename}/restore?company_id=${companyId}`, {});
+  restoreBackup: async (filename: string) => {
+    const params = addCompanyId(new URLSearchParams());
+    params.append('filename', filename);
+    return apiClient.post(`/api/settings/restore?${params.toString()}`);
   },
 
-  deleteBackup: async (filename: string): Promise<{ message: string }> => {
-    const companyId = storage.getCompanyId();
-    return api.delete(`/api/settings/backups/${filename}?company_id=${companyId}`);
+  deleteBackup: async (filename: string) => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.delete(`/api/settings/backups/${filename}?${params.toString()}`);
   },
 
   downloadBackup: async (filename: string): Promise<Blob> => {
-    const companyId = storage.getCompanyId();
-    return api.get(`/api/settings/backups/${filename}/download?company_id=${companyId}`, {
+  const params = addCompanyId(new URLSearchParams());
+
+  const response: any = await apiClient.get(
+    `/api/settings/backups/download/${filename}?${params.toString()}`,
+    {
       responseType: 'blob',
-    });
-  },
-
-  syncData: async (): Promise<{ message: string }> => {
-    const companyId = storage.getCompanyId();
-    return api.post(`/api/settings/sync?company_id=${companyId}`, {});
-  },
-
-  getSyncStatus: async (): Promise<SyncStatus> => {
-    const companyId = storage.getCompanyId();
-    try {
-      return await api.get(`/api/settings/sync/status?company_id=${companyId}`);
-    } catch (error: any) {
-      console.error('Sync status endpoint error:', error);
-      // Return mock data if endpoint doesn't exist (405 error)
-      if (error.response?.status === 405) {
-        return {
-          last_sync: null,
-          pending_records: 0,
-          status: 'Endpoint not implemented'
-        };
-      }
-      throw error;
     }
+  );
+
+  return response.data;
+},
+
+  getSyncStatus: async () => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.get(`/api/settings/sync/status?${params.toString()}`);
   },
 
-  optimizeDatabase: async (): Promise<{ message: string }> => {
-    const companyId = storage.getCompanyId();
-    return api.post(`/api/settings/database/optimize?company_id=${companyId}`, {});
+  syncData: async () => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.post(`/api/sync/upload?${params.toString()}`);
   },
 
-  cleanOldLogs: async (days: number = 30): Promise<{ message: string }> => {
-    const companyId = storage.getCompanyId();
-    return api.post(`/api/settings/logs/cleanup?company_id=${companyId}`, { days });
+  optimizeDatabase: async () => {
+    const params = addCompanyId(new URLSearchParams());
+    return apiClient.post(`/api/settings/optimize?${params.toString()}`);
+  },
+
+  cleanOldLogs: async (days: number) => {
+    const params = addCompanyId(new URLSearchParams());
+    params.append('days', String(days));
+    return apiClient.post(`/api/settings/clean-logs?${params.toString()}`);
   },
 };
 

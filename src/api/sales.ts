@@ -83,6 +83,7 @@ export const salesApi = {
   },
 
   createSale: (payload: SaleCreatePayload) => {
+    console.log("SALE PAYLOAD:", payload);
     const companyId = storage.getCompanyId();
     const userId = storage.getUser()?.id;
     return apiClient.post<{ message: string; sale_id: number; invoice_no: string }>(

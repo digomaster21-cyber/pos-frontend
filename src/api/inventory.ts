@@ -15,6 +15,8 @@ export interface Product {
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
+  current_quantity?: number;    // FIXED: changed from 'stock_quantity' to 'current_quantity'
+  stock_value?: number;
 }
 
 export interface InventoryItem {
@@ -24,7 +26,7 @@ export interface InventoryItem {
   category: string;
   current_avg_cost: number;
   selling_price: number;
-  quantity: number;
+  current_quantity: number;   // FIXED: changed from 'quantity' to 'current_quantity'
   stock_value: number;
   min_stock_level: number;
   max_stock_level: number;
@@ -80,7 +82,7 @@ export interface CreateProductPayload {
   description?: string;
   unit?: string;
   selling_price: number;
-  current_avg_cost?: number;
+  current_avg_cost: number;
   min_stock_level?: number;
   max_stock_level?: number;
   branch_id?: number;
@@ -94,7 +96,7 @@ export interface UpdateProductPayload {
   description?: string;
   unit?: string;
   selling_price?: number;
-  current_avg_cost?: number;
+  current_avg_cost: number;
   min_stock_level?: number;
   max_stock_level?: number;
   is_active?: boolean;
@@ -168,9 +170,11 @@ export const inventoryApi = {
 
   adjustStock: (payload: StockMovementPayload) => {
     const companyId = storage.getCompanyId();
+    const userId = storage.getUser()?.id;
     return apiClient.post<{ message: string }>('/api/inventory/stock/adjust', { 
       ...payload, 
-      company_id: companyId 
+      company_id: companyId,
+      created_by: userId 
     });
   },
 
@@ -184,9 +188,11 @@ export const inventoryApi = {
 
   transferStock: (payload: StockTransferPayload) => {
     const companyId = storage.getCompanyId();
+    const userId = storage.getUser()?.id;
     return apiClient.post<{ message: string }>('/api/inventory/stock/transfer', { 
       ...payload, 
-      company_id: companyId 
+      company_id: companyId,
+      created_by: userId 
     });
   },
 };

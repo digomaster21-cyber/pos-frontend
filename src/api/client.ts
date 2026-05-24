@@ -5,6 +5,13 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import { storage } from '../utils/storage';
+// Add this at the VERY TOP of client.ts, before any other code
+console.log('=== CLIENT.TS DEBUG ===');
+console.log('Window location:', window.location.origin);
+console.log('Import meta env:', import.meta.env);
+console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+console.log('======================');
 
 // Dynamic API URL based on environment
 const getApiBaseUrl = (): string => {
