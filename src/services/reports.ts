@@ -400,6 +400,37 @@ export const reportsApi = {
       `/api/reports/export/sales?${params.toString()}`
     );
   },
+
+  exportSalesReportPDF: async (
+    startDate: string,
+    endDate: string,
+    branchId?: number
+  ): Promise<Blob> => {
+    try {
+      const companyId = storage.getCompanyId();
+      const params = new URLSearchParams();
+      params.append('company_id', companyId || '');
+      params.append('start_date', startDate);
+      params.append('end_date', endDate);
+      if (branchId) params.append('branch_id', String(branchId));
+      
+      // Create URL with params
+      const url = `/api/reports/sales/report/pdf?${params.toString()}`;
+      
+      // Call with correct parameter order: url, params (none), config
+      const result = await apiClient.get<Blob>(url, undefined, {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/pdf'
+        }
+      });
+      
+      return result;
+    } catch (error) {
+      console.error('PDF export error:', error);
+      throw new Error('Failed to generate PDF report');
+    }
+  },
 };
 
 export default reportsApi;

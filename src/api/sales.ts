@@ -36,14 +36,13 @@ export interface SaleCreatePayload {
   notes?: string;
 }
 
-// ✅ ADD THIS - For multiple items in a single sale
 export interface CreateSaleDto {
   items: Array<{
     product_id: number;
     quantity: number;
     unit_price: number;
   }>;
-  branch_id: number;        // Changed from 'branch' to 'branch_id' to match API
+  branch_id: number;
   customer_name?: string;
   payment_method: string;
   notes?: string;
@@ -92,12 +91,11 @@ export const salesApi = {
     );
   },
 
-  // ✅ ADD THIS - For creating sales with multiple items
   createMultiItemSale: (payload: CreateSaleDto) => {
     const companyId = storage.getCompanyId();
     const userId = storage.getUser()?.id;
     return apiClient.post<{ message: string; sale_id: number; invoice_no: string }>(
-      '/api/sales/multi-item', // Adjust endpoint as needed
+      '/api/sales/multi-item',
       { ...payload, company_id: companyId, sold_by: userId }
     );
   },
@@ -127,6 +125,86 @@ export const salesApi = {
       sales: Sale[];
     }>(`/api/sales/by-date/${saleDate}?${params.toString()}`);
   },
+
+  // ==================== RECEIPT METHODS ====================
+  
+  getReceiptPDF: async (saleId: number): Promise<Blob> => {
+    const companyId = storage.getCompanyId();
+    // The apiClient returns the blob directly when responseType is 'blob'
+    const blob = await apiClient.get<Blob>(
+      `/api/receipts/sale/${saleId}?company_id=${companyId}`,
+      undefined,
+      {
+        responseType: 'blob',
+        headers: {
+          'Accept': 'application/pdf'
+        }
+      }
+    );
+    return blob;
+  },
+
+  getReceiptHTML: async (saleId: number): Promise<string> => {
+    const companyId = storage.getCompanyId();
+    // The apiClient returns the HTML string directly
+    const html = await apiClient.get<string>(
+      `/api/receipts/sale/${saleId}/print?company_id=${companyId}`,
+      undefined,
+      {
+        responseType: 'text',
+        headers: {
+          'Accept': 'text/html'
+        }
+      }
+    );
+    return html;
+  },
+
+  printReceipt: async (saleId: number): Promise<void> => {
+    try {
+      const html = await salesApi.getReceiptHTML(saleId);
+      const printWindow = window.open('', '_blank', 'width=400,height=600');
+      if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.onload = () => {
+          printWindow.print();
+        };
+      } else {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+    } catch (error) {
+      console.error('Print failed:', error);
+      throw error;
+    }
+  },
+
+  downloadReceipt: async (saleId: number, invoiceNo: string): Promise<void> => {
+    try {
+      const pdfBlob = await salesApi.getReceiptPDF(saleId);
+      
+      // Validate the blob
+      if (!pdfBlob || pdfBlob.size === 0) {
+        throw new Error('Generated PDF is empty');
+      }
+      
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `receipt_${invoiceNo}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+    } catch (error) {
+      console.error('Download failed:', error);
+      throw error;
+    }
+  }
 };
 
 export default salesApi;

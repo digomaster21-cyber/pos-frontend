@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { 
+  generateDetailedSalesPDF,
   generateDailySalesPDF, 
   generateProfitLossPDF, 
   generateInventoryValuationPDF,
@@ -9,6 +10,7 @@ import {
   downloadPDF,
   printPDF,
   shareViaWhatsApp,
+  DetailedSalesData,
   DailySalesData,
   ProfitLossData,
   InventoryValuationData,
@@ -20,7 +22,7 @@ import {
 interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  reportType: 'daily' | 'profitloss' | 'inventory' | 'top_products' | 'category_sales' | 'dashboard';
+  reportType: 'detailed_sales' | 'daily' | 'profitloss' | 'inventory' | 'top_products' | 'category_sales' | 'dashboard';
   data: any;
   title: string;
 }
@@ -33,6 +35,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, repor
 
   const generatePDF = () => {
     switch (reportType) {
+      case 'detailed_sales':
+        return generateDetailedSalesPDF(data as DetailedSalesData);
       case 'daily':
         return generateDailySalesPDF(data as DailySalesData);
       case 'profitloss':

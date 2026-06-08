@@ -1,4 +1,4 @@
-import { apiClient } from '../api/client';
+import apiClient from '../api/client';
 import { storage } from '../utils/storage';
 
 const addCompanyId = (params: URLSearchParams): URLSearchParams => {
@@ -39,18 +39,13 @@ export const settingsApi = {
     return apiClient.delete(`/api/settings/backups/${filename}?${params.toString()}`);
   },
 
-  downloadBackup: async (filename: string): Promise<Blob> => {
-  const params = addCompanyId(new URLSearchParams());
-
-  const response: any = await apiClient.get(
-    `/api/settings/backups/download/${filename}?${params.toString()}`,
-    {
+  downloadBackup: async (filename: string) => {
+    const params = addCompanyId(new URLSearchParams());
+    const response = await apiClient.get(`/api/settings/backups/download/${filename}?${params.toString()}`, {
       responseType: 'blob',
-    }
-  );
-
-  return response.data;
-},
+    });
+    return response;
+  },
 
   getSyncStatus: async () => {
     const params = addCompanyId(new URLSearchParams());

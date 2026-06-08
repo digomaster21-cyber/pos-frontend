@@ -36,7 +36,7 @@ class ApiService {
     
     // Production fallback
     if (import.meta.env.PROD) {
-      return 'https://master-project-bjaz.onrender.com';
+      return ' ';
     }
     
     // Development fallback

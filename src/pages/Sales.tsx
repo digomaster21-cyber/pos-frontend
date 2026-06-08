@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import receiptService from '../services/receiptService';
 
 export const Sales: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
@@ -18,12 +19,19 @@ export const Sales: React.FC = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [availableStock, setAvailableStock] = useState<number>(0);
 
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  
+  // Receipt state
+  const [lastSaleId, setLastSaleId] = useState<number | null>(null);
+  const [lastInvoiceNo, setLastInvoiceNo] = useState('');
+  const [printing, setPrinting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   // Get current datetime in local format for datetime-local input
   const getCurrentDateTime = () => {
@@ -41,7 +49,7 @@ export const Sales: React.FC = () => {
     product_id: 0,
     quantity: 1,
     unit_price: 0,
-    sale_date: getCurrentDateTime(), // Now includes time
+    sale_date: getCurrentDateTime(),
     customer_name: '',
     payment_method: 'cash',
     notes: '',
@@ -81,7 +89,6 @@ export const Sales: React.FC = () => {
         branch_id: Number(branchId || 1),
       });
 
-      // FIXED: Changed from item.quantity to item.current_quantity
       const item = stock.find((s) => s.id === productId);
       setAvailableStock(item?.current_quantity || 0);
     } catch {
@@ -111,6 +118,34 @@ export const Sales: React.FC = () => {
     await fetchAvailableStock(Number(form.product_id || 0), branchId);
   };
 
+  // Receipt handlers
+  const handlePrintReceipt = async () => {
+    if (!lastSaleId) return;
+    setPrinting(true);
+    try {
+      await receiptService.printReceipt(lastSaleId);
+    } catch (error: any) {
+      console.error('Print failed:', error);
+      setError(error.message || 'Failed to print receipt');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handleDownloadReceipt = async () => {
+    if (!lastSaleId || !lastInvoiceNo) return;
+    setDownloading(true);
+    try {
+      await receiptService.downloadPDF(lastSaleId, lastInvoiceNo);
+      setSuccessMessage('Receipt downloaded successfully');
+    } catch (error: any) {
+      console.error('Download failed:', error);
+      setError(error.message || 'Failed to download receipt');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -121,7 +156,7 @@ export const Sales: React.FC = () => {
       // Convert datetime-local value to ISO string for backend
       const saleDateTime = form.sale_date ? new Date(form.sale_date).toISOString() : new Date().toISOString();
       
-      await salesApi.createSale({
+      const result = await salesApi.createSale({
         ...form,
         branch_id: Number(form.branch_id),
         product_id: Number(form.product_id),
@@ -144,7 +179,14 @@ export const Sales: React.FC = () => {
         notes: '',
       });
 
-      setSuccessMessage('Sale created successfully.');
+      // Store sale info for receipt
+      setLastSaleId(result.sale_id);
+      setLastInvoiceNo(result.invoice_no);
+      
+      // Show receipt modal
+      setShowReceiptModal(true);
+      setSuccessMessage('Sale created successfully!');
+      
       await loadData();
     } catch (err: any) {
       setError(err?.message || 'Failed to create sale');
@@ -290,9 +332,41 @@ export const Sales: React.FC = () => {
                       {sale.status === 'cancelled' ? (
                         <Button disabled>Cancelled</Button>
                       ) : (
-                        <Button onClick={() => openCancelModal(sale)}>
-                          Cancel Sale
-                        </Button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={async () => {
+                              try {
+                                await receiptService.printReceipt(sale.id);
+                              } catch (err) {
+                                setError('Failed to print receipt');
+                              }
+                            }}
+                          >
+                            🖨️ Print
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={async () => {
+                              try {
+                                await receiptService.downloadPDF(sale.id, sale.invoice_no);
+                              } catch (err) {
+                                setError('Failed to download receipt');
+                              }
+                            }}
+                          >
+                            📄 PDF
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="danger"
+                            onClick={() => openCancelModal(sale)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -311,6 +385,7 @@ export const Sales: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Create Sale Modal */}
       <Modal
         open={showCreateModal}
         onCancel={() => setShowCreateModal(false)}
@@ -349,14 +424,18 @@ export const Sales: React.FC = () => {
               <select
                 value={form.product_id}
                 onChange={(e) => handleProductChange(Number(e.target.value))}
-                style={{ width: '100%', padding: '10px', borderRadius: 8 }}
+                style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px solid #d1d5db' }}
               >
                 <option value={0}>Select product</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} ({product.sku})
-                  </option>
-                ))}
+                {products.map((product) => {
+                  const stock = (product as any).stock_quantity || 0;
+                  const stockWarning = stock === 0 ? '❌ OUT OF STOCK' : stock < 10 ? '⚠️ Low Stock' : '';
+                  return (
+                    <option key={product.id} value={product.id}>
+                      {product.name} ({product.sku}) - Stock: {stock} {stockWarning}
+                    </option>
+                  );
+                })}
               </select>
               <small style={{ color: '#6b7280' }}>
                 Choose the product you want to sell.
@@ -498,18 +577,23 @@ export const Sales: React.FC = () => {
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>
                 Payment Method
               </label>
-              <Input
-                placeholder="cash, mobile, bank"
-                value={form.payment_method || 'cash'}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              <select
+                value={form.payment_method}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                   setForm((prev) => ({
                     ...prev,
                     payment_method: e.target.value,
                   }))
                 }
-              />
+                style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px solid #d1d5db' }}
+              >
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="transfer">Bank Transfer</option>
+                <option value="credit">Credit</option>
+              </select>
               <small style={{ color: '#6b7280' }}>
-                Example: cash, mobile money, bank transfer.
+                Payment method used by customer.
               </small>
             </div>
 
@@ -528,7 +612,7 @@ export const Sales: React.FC = () => {
                 }
               />
               <small style={{ color: '#6b7280' }}>
-                Short explanation before saving the sale. Use for discounts, special instructions, or anything unusual.
+                Short explanation before saving the sale.
               </small>
             </div>
 
@@ -548,6 +632,7 @@ export const Sales: React.FC = () => {
         </form>
       </Modal>
 
+      {/* Cancel Sale Modal */}
       <Modal
         open={showCancelModal}
         onCancel={() => setShowCancelModal(false)}
@@ -609,6 +694,50 @@ export const Sales: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Receipt Modal */}
+      <Modal
+        open={showReceiptModal}
+        onCancel={() => setShowReceiptModal(false)}
+        title="Sale Complete!"
+      >
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <div style={{ 
+            width: '60px', 
+            height: '60px', 
+            background: '#dcfce7', 
+            borderRadius: '50%', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            margin: '0 auto 16px',
+            fontSize: '30px'
+          }}>
+            ✓
+          </div>
+          
+          <h3 style={{ marginBottom: '8px' }}>Sale Completed Successfully!</h3>
+          <p style={{ color: '#6b7280', marginBottom: '16px' }}>
+            Invoice: <strong>{lastInvoiceNo}</strong>
+          </p>
+          
+          <div style={{ display: 'grid', gap: '12px', marginTop: '20px' }}>
+            <Button onClick={handlePrintReceipt} disabled={printing}>
+              {printing ? 'Preparing...' : '🖨️ Print Receipt'}
+            </Button>
+            <Button onClick={handleDownloadReceipt} disabled={downloading} variant="outline">
+              {downloading ? 'Downloading...' : '📄 Download PDF'}
+            </Button>
+            <Button onClick={() => setShowReceiptModal(false)} variant="ghost">
+              Close
+            </Button>
+          </div>
+          
+          <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '20px' }}>
+            Tip: Make sure your printer is connected (USB, WiFi, or Bluetooth)
+          </p>
+        </div>
       </Modal>
     </div>
   );

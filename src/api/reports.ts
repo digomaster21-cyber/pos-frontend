@@ -1,5 +1,5 @@
 // src/api/reports.ts
-import { apiClient } from './client';
+import apiClient from '../api/client';
 import { storage } from '../utils/storage';
 
 export interface ReportFilter {
@@ -31,6 +31,42 @@ export interface ProfitLossReport {
   profit: number;
   monthly: Array<{ month: string; profit: number }>;
   expensesByCategory: Array<{ category: string; amount: number }>;
+}
+
+// Detailed Sales Report Interfaces
+export interface DetailedSaleItem {
+  id: number;
+  invoice_no: string;
+  sale_date: string;
+  sold_by: number;
+  sold_by_name: string;
+  sold_by_username: string;
+  customer_name: string;
+  product_id: number;
+  product_name: string;
+  product_sku: string;
+  quantity: number;
+  unit_price: number;
+  unit_cost: number;
+  total_price: number;
+  profit: number;
+  payment_method: string;
+  status: string;
+  created_at: string;
+}
+
+export interface DetailedSalesResponse {
+  period: {
+    start_date: string;
+    end_date: string;
+  };
+  sales: DetailedSaleItem[];
+  summary: {
+    total_revenue: number;
+    total_profit: number;
+    total_transactions: number;
+    total_items: number;
+  };
 }
 
 // Helper to add company_id to params
@@ -79,6 +115,25 @@ export const reportsApi = {
     }
   },
 
+  // Get detailed sales report
+  getDetailedSalesReport: async (
+    startDate: string,
+    endDate: string,
+    branchId?: number
+  ): Promise<DetailedSalesResponse> => {
+    const companyId = storage.getCompanyId();
+    const params = new URLSearchParams();
+    params.append('company_id', companyId || '');
+    params.append('start_date', startDate);
+    params.append('end_date', endDate);
+    if (branchId) params.append('branch_id', String(branchId));
+    
+    const response = await apiClient.get<DetailedSalesResponse>(
+      `/api/reports/sales/detailed?${params.toString()}`
+    );
+    return response;
+  },
+
   // Get profit-loss report
   getProfitLossReport: async (filters: ReportFilter): Promise<ProfitLossReport> => {
     const params = new URLSearchParams({
@@ -114,7 +169,7 @@ export const reportsApi = {
     }
   },
 
-  // Export report
+  // Export report to CSV/JSON
   exportReport: async (type: 'sales' | 'profit-loss', filters: ReportFilter): Promise<Blob> => {
     const params = new URLSearchParams({
       start_date: filters.startDate,
@@ -141,4 +196,50 @@ export const reportsApi = {
       throw new Error('Export functionality not available yet');
     }
   },
+
+  // Export sales report as PDF
+  exportSalesReportPDF: async (
+    startDate: string,
+    endDate: string,
+    branchId?: number
+  ): Promise<Blob> => {
+    try {
+      const companyId = storage.getCompanyId();
+      const token = storage.getToken();
+      const params = new URLSearchParams();
+      params.append('company_id', companyId || '');
+      params.append('start_date', startDate);
+      params.append('end_date', endDate);
+      if (branchId) params.append('branch_id', String(branchId));
+      
+      // Determine base URL
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 
+                     import.meta.env.VITE_API_URL || 
+                     'http://localhost:8000';
+      
+      // Use fetch for PDF download (more reliable for blobs)
+      const response = await fetch(
+        `${baseURL}/api/reports/sales/report/pdf?${params.toString()}`,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/pdf',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      return blob;
+    } catch (error) {
+      console.error('PDF export error:', error);
+      throw new Error('Failed to generate PDF report');
+    }
+  },
 };
+
+export default reportsApi;
