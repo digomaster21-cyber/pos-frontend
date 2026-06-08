@@ -21,7 +21,11 @@ import SettingsPage from './pages/Settings/Settings';
 import SyncPage from './pages/Sync';
 import { ReportsPage } from './pages/ReportsPage';
 import ExpensesPage from './pages/Expenses';
-import BranchesPage from './pages/BranchesPage';  // FIXED: Changed from 'nchesPage' to 'BranchesPage'
+import BranchesPage from './pages/BranchesPage';
+
+// PWA Components
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 
 const App: React.FC = () => {
   return (
@@ -58,6 +62,10 @@ const App: React.FC = () => {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      
+      {/* PWA Components - Only show when user is logged in */}
+      <PWAInstallButton />
+      <PWAUpdatePrompt />
     </AuthProvider>
   );
 };
