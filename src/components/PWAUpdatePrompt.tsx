@@ -45,3 +45,5 @@ export const PWAUpdatePrompt: React.FC = () => {
     </div>
   );
 };
+
+export default PWAUpdatePrompt;
